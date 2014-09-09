@@ -600,7 +600,8 @@
                                   (list (cdr i) (car i))))
                             (table->list (vector-ref x 1)))))
                (libdef-imports ld)))
-       ,@(libdef-body ld)))))
+       ,@(libdef-body ld)
+       (##namespace (""))))))
 
 (define-runtime-syntax define-library
   define-library-expand)
