@@ -649,6 +649,7 @@
                 (let* ((idmap (vector-ref x 0))
                        (imports (vector-ref x 1)))
                   `(##begin
+
                     ,@(if (null? imports)
                           '()
                           `((##namespace
@@ -658,20 +659,24 @@
                                            (car i)
                                            (list (cdr i) (car i))))
                                      (table->list imports))))))
+
                     ,@(apply
                        append
                        (map (lambda (m)
                               (let ((id (car m)))
-                                (if (table-ref imports id #f)
+                                (if (table-ref imports id #f) ;; macro is imported?
                                     `((##define-syntax
                                         ,(string->symbol
                                           (string-append
                                            (idmap-namespace idmap)
                                            (symbol->string id)))
-                                        (lambda (src)
-                                          (syn#apply-rules ',(cdr m) src))))
+                                        (##lambda (src)
+                                          (syn#apply-rules
+                                           (##quote ,(cdr m))
+                                           src))))
                                     '())))
                             (idmap-macros idmap))))))
+
                (libdef-imports ld))
        ,@(libdef-body ld)
        (##namespace (""))))))

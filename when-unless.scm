@@ -1,6 +1,11 @@
+;; File: when-unless.scm
+
 (define-library (when-unless)
 
-  (import (gambit))
+  ;; the following import will be required when syntax-rules is hygienic
+#;
+  (import (only (gambit)
+                if not begin)) ;; required by expansions of when and unless
 
   (export when unless)
 

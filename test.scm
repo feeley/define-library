@@ -1,14 +1,16 @@
+;; File: test.scm
+
 ;; this program should be run with the command
 ;;
-;; gsi -e '(load "define-library")' github.com/feeley/digest/digest test.sld
+;; gsi -e '(load "define-library")' github.com/feeley/digest/digest test.scm
 
 (define-library (test)
 
-  (import (gambit)
+  (import (only (gambit)
+                define quote pp ;; required directly in the body
+                if not begin) ;; required by expansions of when and unless
           (https://github.com/feeley/digest)
           (when-unless))
-
-  (export (rename foo walrus) bar)
 
   (begin
 
