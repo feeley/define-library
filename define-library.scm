@@ -12,6 +12,24 @@
 
 ;;;============================================================================
 
+;; Setup implementation of define-syntax and syntax-rules.
+
+(##include "syntax.scm")
+(##include "syntaxrulesxform.scm")
+
+(define-runtime-syntax define-syntax
+  (lambda (src)
+    (let ((locat (##source-locat src)))
+      (##make-source
+       (##cons (##make-source '##define-syntax locat)
+               (##cdr (##source-code src)))
+       locat))))
+
+(define-runtime-syntax syntax-rules
+  syn#syntax-rules-form-transformer)
+
+;;;============================================================================
+
 (define (keep keep? lst)
   (cond ((null? lst)       '())
         ((keep? (car lst)) (cons (car lst) (keep keep? (cdr lst))))
@@ -43,6 +61,7 @@
   (name-src unprintable:)
   name
   namespace
+  macros
   map
 )
 
@@ -137,6 +156,7 @@
     (close-input-port port)
     first))
 
+#;
 (define (read-libdef-sld name reference-src port)
   (parse-define-library (read-first port)))
 
@@ -152,6 +172,7 @@
 (define library-kinds #f)
 (set! library-kinds
       (list
+#;
        (cons ".sld"
              (vector read-libdef-sld))
        (cons ".scm"
@@ -431,6 +452,7 @@
                                      (idmap-name-src idmap)
                                      (idmap-name idmap)
                                      (idmap-namespace idmap)
+                                     (idmap-macros idmap)
                                      (append (map (lambda (r)
                                                     (cons (cdr r) (cdar r)))
                                                   renames)
@@ -479,6 +501,7 @@
                                     (idmap-name-src idmap)
                                     (idmap-name idmap)
                                     (idmap-namespace idmap)
+                                    (idmap-macros idmap)
                                     (let ((prefix-str (symbol->string prefix)))
                                       (map (lambda (x)
                                              (cons (string->symbol
@@ -508,6 +531,7 @@
                             (idmap-name-src idmap)
                             (idmap-name idmap)
                             (idmap-namespace idmap)
+                            (idmap-macros idmap)
                             (keep (if (eq? head 'only)
                                       (lambda (x) (memq (car x) ids))
                                       (lambda (x) (not (memq (car x) ids))))
@@ -524,6 +548,7 @@
                    import-set-src
                    name
                    (libdef-namespace ld)
+                   (idmap-macros (libdef-exports ld))
                    (idmap-map (libdef-exports ld))))))
 
           (import-set-err))))
@@ -541,6 +566,32 @@
                       (list (cons 'begin (cdr (##source-strip x)))))
                   (parse-include ctx rest-srcs lib-decl-src kind)))
         '()))
+
+  (define (parse-macros ctx body)
+    (let loop ((expr-srcs body) (rev-macros '()))
+
+      (define (done)
+        (reverse rev-macros))
+
+      (if (not (pair? expr-srcs))
+          (done)
+          (let* ((expr-src (car expr-srcs))
+                 (expr (##source-strip expr-src)))
+            (if (not (and (pair? expr)
+                          (eq? (##source-strip (car expr)) 'define-syntax)
+                          (pair? (cdr expr))
+                          (symbol? (##source-strip (cadr expr)))
+                          (pair? (cddr expr))
+                          (let ((x (##source-strip (caddr expr))))
+                            (and (pair? x)
+                                 (eq? (##source-strip (car x)) 'syntax-rules)))
+                          (null? (cdddr expr))))
+                (done)
+                (let ((id (##source-strip (cadr expr)))
+                      (crules (syn#syntax-rules->crules (caddr expr))))
+                  (loop (cdr expr-srcs)
+                        (cons (cons id crules)
+                              rev-macros))))))))
 
   (let ((form (##source-strip src)))
     (if (not (and (pair? form)
@@ -568,38 +619,60 @@
 
              (parse-body ctx body-srcs)
 
-             (make-libdef
-              (ctx-src ctx)
-              (ctx-name-src ctx)
-              (ctx-name ctx)
-              (ctx-namespace ctx)
+             (let* ((body (reverse (ctx-rev-body ctx)))
+                    (macros (parse-macros ctx body)))
+               (make-libdef
+                (ctx-src ctx)
+                (ctx-name-src ctx)
+                (ctx-name ctx)
+                (ctx-namespace ctx)
 
-              (make-idmap
-               (ctx-src ctx)
-               (ctx-name-src ctx)
-               (ctx-name ctx)
-               (ctx-namespace ctx)
-               (table->list (ctx-exports-tbl ctx)))
+                (make-idmap
+                 (ctx-src ctx)
+                 (ctx-name-src ctx)
+                 (ctx-name ctx)
+                 (ctx-namespace ctx)
+                 macros
+                 (table->list (ctx-exports-tbl ctx)))
 
-              (map cdr (reverse (ctx-rev-imports ctx)))
+                (map cdr (reverse (ctx-rev-imports ctx)))
 
-              (reverse (ctx-rev-body ctx)))))))))
+                body))))))))
 
 (define (define-library-expand src)
   (let ((ld (parse-define-library src)))
     (##expand-source-template
      src
      `(##begin
-       (##namespace
-        (,(libdef-namespace ld))
-        ,@(map (lambda (x)
-                 (cons (idmap-namespace (vector-ref x 0))
-                       (map (lambda (i)
-                              (if (eq? (car i) (cdr i))
-                                  (car i)
-                                  (list (cdr i) (car i))))
-                            (table->list (vector-ref x 1)))))
-               (libdef-imports ld)))
+       (##namespace (,(libdef-namespace ld)))
+       ,@(map (lambda (x)
+                (let* ((idmap (vector-ref x 0))
+                       (imports (vector-ref x 1)))
+                  `(##begin
+                    ,@(if (null? imports)
+                          '()
+                          `((##namespace
+                             (,(idmap-namespace idmap)
+                              ,@(map (lambda (i)
+                                       (if (eq? (car i) (cdr i))
+                                           (car i)
+                                           (list (cdr i) (car i))))
+                                     (table->list imports))))))
+                    ,@(apply
+                       append
+                       (map (lambda (m)
+                              (let ((id (car m)))
+                                (if (table-ref imports id #f)
+                                    `((##define-syntax
+                                        ,(string->symbol
+                                          (string-append
+                                           (idmap-namespace idmap)
+                                           (symbol->string id)))
+                                        (lambda (src)
+                                          (syn#apply-rules ',(cdr m) src))))
+                                    '())))
+                            (idmap-macros idmap))))))
+               (libdef-imports ld))
        ,@(libdef-body ld)
        (##namespace (""))))))
 
