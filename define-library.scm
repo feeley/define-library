@@ -589,6 +589,20 @@
                 (done)
                 (let ((id (##source-strip (cadr expr)))
                       (crules (syn#syntax-rules->crules (caddr expr))))
+
+                  (define (generate-local-macro-def id crules expr-src)
+                    (let ((locat (##source-locat expr-src)))
+                      (##make-source
+                       `(##define-syntax ,id
+                          (##lambda (##src)
+                            (syn#apply-rules ',crules ##src)))
+                       locat)))
+
+                  ;; replace original define-syntax by local macro def
+                  ;; to avoid having to load syntax-rules implementation
+                  (set-car! expr-srcs
+                            (generate-local-macro-def id crules expr-src))
+
                   (loop (cdr expr-srcs)
                         (cons (cons id crules)
                               rev-macros))))))))
