@@ -36,6 +36,14 @@
 (define-runtime-syntax syntax
   (lambda (src) (syn#syntax-form-transformer src '())))
 
+(define-runtime-syntax macro
+  (lambda (src)
+    (let ((locat (##source-locat src)))
+      (##make-source
+       `(##lambda (##src)
+         (##apply (##lambda ,@(cdr (##source-strip src))) (##cdr (##source-strip ##src))))
+      locat))))
+
 ;;;============================================================================
 
 (define (keep keep? lst)

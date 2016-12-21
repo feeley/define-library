@@ -15,6 +15,7 @@
   (begin
 
     (define skip-test #f)
+    (define z 10)
 
     (unless skip-test
 
@@ -22,4 +23,7 @@
       (pp (digest-string "" 'sha-1 'hex))
 
       ;; should give "a9993e364706816aba3e25717850c26c9cd0d89d"
-      (pp (digest-string "abc" 'sha-1 'hex)))))
+      (pp (digest-string "abc" 'sha-1 'hex)))
+
+    (when z 
+      (pp (addn 5 z)))))
