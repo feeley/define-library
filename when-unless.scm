@@ -12,9 +12,10 @@
   (begin
 
     (define-syntax when
-      (syntax-rules ()
-        ((_ test expr expr* ...)
-         (if test (begin expr expr* ...)))))
+      (lambda (x)
+        (syntax-case x ()
+          ((_ test e e* ...)
+           #'(if test (begin e e* ...))))))
 
     (define-syntax unless
       (syntax-rules ()
