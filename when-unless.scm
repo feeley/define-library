@@ -7,14 +7,18 @@
   (import (only (gambit)
                 if not begin)) ;; required by expansions of when and unless
 
-  (export when unless)
+  (export when unless addn)
 
   (begin
+    (define-syntax addn
+      (macro args
+             `(##+ ,(car args) ,(cadr args))))
 
     (define-syntax when
-      (syntax-rules ()
-        ((_ test expr expr* ...)
-         (if test (begin expr expr* ...)))))
+      (lambda (x)
+        (syntax-case x ()
+          ((_ test e e* ...)
+           #'(if test (begin e e* ...))))))
 
     (define-syntax unless
       (syntax-rules ()

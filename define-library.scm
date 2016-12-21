@@ -16,6 +16,8 @@
 
 (##include "syntax.scm")
 (##include "syntaxrulesxform.scm")
+(##include "syntaxcasexform.scm")
+(##include "syntaxxform.scm")
 
 (define-runtime-syntax define-syntax
   (lambda (src)
@@ -27,6 +29,20 @@
 
 (define-runtime-syntax syntax-rules
   syn#syntax-rules-form-transformer)
+
+(define-runtime-syntax syntax-case
+  syn#syntax-case-form-transformer)
+
+(define-runtime-syntax syntax
+  (lambda (src) (syn#syntax-form-transformer src '())))
+
+(define-runtime-syntax macro
+  (lambda (src)
+    (let ((locat (##source-locat src)))
+      (##make-source
+       `(##lambda (##src)
+         (##apply (##lambda ,@(cdr (##source-strip src))) (##cdr (##source-strip ##src))))
+      locat))))
 
 ;;;============================================================================
 
@@ -582,29 +598,25 @@
                           (pair? (cdr expr))
                           (symbol? (##source-strip (cadr expr)))
                           (pair? (cddr expr))
-                          (let ((x (##source-strip (caddr expr))))
-                            (and (pair? x)
-                                 (eq? (##source-strip (car x)) 'syntax-rules)))
                           (null? (cdddr expr))))
                 (done)
                 (let ((id (##source-strip (cadr expr)))
-                      (crules (syn#syntax-rules->crules (caddr expr))))
+                      (form (caddr expr)))
 
-                  (define (generate-local-macro-def id crules expr-src)
+                  (define (generate-local-macro-def id form expr-src)
                     (let ((locat (##source-locat expr-src)))
                       (##make-source
                        `(##define-syntax ,id
-                          (##lambda (##src)
-                            (syn#apply-rules ',crules ##src)))
+                         ,form)
                        locat)))
 
                   ;; replace original define-syntax by local macro def
                   ;; to avoid having to load syntax-rules implementation
                   (set-car! expr-srcs
-                            (generate-local-macro-def id crules expr-src))
+                            (generate-local-macro-def id form expr-src))
 
                   (loop (cdr expr-srcs)
-                        (cons (cons id crules)
+                        (cons (cons id form)
                               rev-macros))))))))
 
   (let ((form (##source-strip src)))
@@ -684,10 +696,7 @@
                                           (string-append
                                            (idmap-namespace idmap)
                                            (symbol->string id)))
-                                        (##lambda (src)
-                                          (syn#apply-rules
-                                           (##quote ,(cdr m))
-                                           src))))
+                                        ,(cdr m)))
                                     '())))
                             (idmap-macros idmap))))))
 
